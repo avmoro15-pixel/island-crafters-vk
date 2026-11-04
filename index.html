@@ -147,6 +147,63 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
     });
 }
 </script>
+<script>
+(() => {
+    const bridge = window.vkBridge;
+    if (!bridge.isEmbedded() && !new URLSearchParams(location.search).has('vk_app_id')) return;
+
+    // Enable automatic ad breaks only after confirming the format in the VK dashboard.
+    const interstitial = false;
+    const state = { available: true, interstitial, suspended: document.hidden, lastAd: null };
+    let listener = null;
+    let pending = false;
+    let id = 0;
+
+    function emit() {
+        if (listener) listener();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        state.suspended = document.hidden;
+        emit();
+    });
+    bridge.subscribe(({ detail }) => {
+        if (detail.type === 'VKWebAppViewHide' || detail.type === 'VKWebAppViewRestore') {
+            state.suspended = document.hidden || detail.type === 'VKWebAppViewHide';
+            emit();
+        }
+    });
+
+    window.IslandVKAds = {
+        snapshotJson: () => JSON.stringify(state),
+        setListener(callback) { listener = callback; },
+        requestAd(kind) {
+            if (pending || (kind !== 'rewarded' && !(interstitial && kind === 'interstitial'))) return 0;
+            pending = true;
+            const requestId = ++id;
+            const options = { ad_format: kind };
+            let watchdog;
+            const show = async () => {
+                const available = await bridge.send('VKWebAppCheckNativeAds', options);
+                if (!pending || id !== requestId || available.result !== true) return false;
+                const response = await bridge.send('VKWebAppShowNativeAds', options);
+                return response.result === true;
+            };
+            Promise.race([
+                show(),
+                new Promise(resolve => { watchdog = setTimeout(() => resolve(false), 90000); }),
+            ]).catch(() => false).then(shown => {
+                clearTimeout(watchdog);
+                pending = false;
+                state.lastAd = { id: requestId, kind, shown, rewarded: shown && kind === 'rewarded' };
+                emit();
+            });
+            return requestId;
+        },
+    };
+})();
+
+</script>
 </head>
 	<body>
 		<canvas id="canvas">
@@ -181,7 +238,7 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
         </script>
         <script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":20116620,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":20133732,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
