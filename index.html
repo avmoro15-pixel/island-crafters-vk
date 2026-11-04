@@ -150,11 +150,14 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
 <script>
 (() => {
     const bridge = window.vkBridge;
-    if (!bridge.isEmbedded() && !new URLSearchParams(location.search).has('vk_app_id')) return;
+    const inVK = bridge.isEmbedded() || new URLSearchParams(location.search).has('vk_app_id');
+    const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) <= 600;
+    const portrait = matchMedia('(orientation: portrait)');
+    let hiddenInVK = false;
 
     // Enable automatic ad breaks only after confirming the format in the VK dashboard.
     const interstitial = false;
-    const state = { available: true, interstitial, suspended: document.hidden, lastAd: null };
+    const state = { available: inVK, interstitial, suspended: document.hidden || (phone && portrait.matches), lastAd: null };
     let listener = null;
     let pending = false;
     let id = 0;
@@ -163,14 +166,20 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
         if (listener) listener();
     }
 
-    document.addEventListener('visibilitychange', () => {
-        state.suspended = document.hidden;
+    function updateVisibility() {
+        const rotate = phone && portrait.matches;
+        state.suspended = document.hidden || hiddenInVK || rotate;
+        document.documentElement.classList.toggle('rotate-phone', rotate);
         emit();
-    });
+    }
+
+    document.addEventListener('visibilitychange', updateVisibility);
+    portrait.addEventListener('change', updateVisibility);
+    updateVisibility();
     bridge.subscribe(({ detail }) => {
         if (detail.type === 'VKWebAppViewHide' || detail.type === 'VKWebAppViewRestore') {
-            state.suspended = document.hidden || detail.type === 'VKWebAppViewHide';
-            emit();
+            hiddenInVK = detail.type === 'VKWebAppViewHide';
+            updateVisibility();
         }
     });
 
@@ -178,7 +187,7 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
         snapshotJson: () => JSON.stringify(state),
         setListener(callback) { listener = callback; },
         requestAd(kind) {
-            if (pending || (kind !== 'rewarded' && !(interstitial && kind === 'interstitial'))) return 0;
+            if (!inVK || pending || (kind !== 'rewarded' && !(interstitial && kind === 'interstitial'))) return 0;
             pending = true;
             const requestId = ++id;
             const options = { ad_format: kind };
@@ -204,8 +213,22 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
 })();
 
 </script>
+<style>
+#phone-orientation { display: none; }
+.rotate-phone #phone-orientation {
+    position: fixed; inset: 0; z-index: 10000; display: grid;
+    place-content: center; padding: 24px; background: #062d40;
+    color: #ffdf95; font: 600 20px system-ui, sans-serif; text-align: center;
+}
+#phone-orientation [lang=en], html[lang=en] #phone-orientation [lang=ru] { display: none; }
+html[lang=en] #phone-orientation [lang=en] { display: inline; }
+</style>
 </head>
 	<body>
+<div id="phone-orientation" role="status">
+    <span lang="ru">Поверните телефон горизонтально</span>
+    <span lang="en">Turn your phone sideways</span>
+</div>
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
 		</canvas>
@@ -238,7 +261,7 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
         </script>
         <script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":20135252,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":20135396,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
