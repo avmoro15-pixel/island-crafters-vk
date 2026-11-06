@@ -208,6 +208,10 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
                 detail = [error?.error_type, error?.error_data?.error_code]
                     .filter(value => typeof value === "number" || /^[A-Za-z_0-9]+$/.test(value ?? ""))
                     .join(" / ") || "rejected";
+                const reason = error?.error_data?.error_reason;
+                const description = error?.error_data?.error_description;
+                const messages = [reason, description].filter(value => typeof value === "string" && value.trim());
+                if (messages.length) detail += " | " + messages.join(" | ").slice(0, 240);
                 return false;
             }).then(shown => {
                 clearTimeout(watchdog);
