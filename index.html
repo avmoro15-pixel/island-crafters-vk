@@ -192,20 +192,38 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
             const requestId = ++id;
             const options = { ad_format: kind };
             let watchdog;
+            let stage = "CheckNativeAds";
+            let detail = "result=false";
             const show = async () => {
                 const available = await bridge.send('VKWebAppCheckNativeAds', options);
                 if (!pending || id !== requestId || available.result !== true) return false;
+                stage = 'ShowNativeAds';
                 const response = await bridge.send('VKWebAppShowNativeAds', options);
                 return response.result === true;
             };
             Promise.race([
                 show(),
-                new Promise(resolve => { watchdog = setTimeout(() => resolve(false), 90000); }),
-            ]).catch(() => false).then(shown => {
+                new Promise(resolve => { watchdog = setTimeout(() => { detail = "timeout"; resolve(false); }, 90000); }),
+            ]).catch(error => {
+                detail = [error?.error_type, error?.error_data?.error_code]
+                    .filter(value => typeof value === "number" || /^[A-Za-z_0-9]+$/.test(value ?? ""))
+                    .join(" / ") || "rejected";
+                return false;
+            }).then(shown => {
                 clearTimeout(watchdog);
                 pending = false;
                 state.lastAd = { id: requestId, kind, shown, rewarded: shown && kind === 'rewarded' };
                 emit();
+                if (!shown) {
+                    document.getElementById("vk-ad-test")?.remove();
+                    const notice = document.createElement("button");
+                    notice.id = "vk-ad-test";
+                    notice.type = "button";
+                    notice.textContent = "VK: " + kind + " | " + stage + " | " + detail + " | x";
+                    notice.style.cssText = "position:fixed;z-index:9999;left:5%;right:5%;top:18%;padding:12px;background:#062d40;color:#fff;border:1px solid #ffdf95;border-radius:8px;font:16px sans-serif";
+                    notice.onclick = () => notice.remove();
+                    document.body.append(notice);
+                }
             });
             return requestId;
         },
