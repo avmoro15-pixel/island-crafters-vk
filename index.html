@@ -190,7 +190,7 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
             if (!inVK || pending || (kind !== 'rewarded' && !(interstitial && kind === 'interstitial'))) return 0;
             pending = true;
             const requestId = ++id;
-            const options = { ad_format: kind };
+            const options = { ad_format: kind === "rewarded" ? "reward" : kind };
             let watchdog;
             let stage = "CheckNativeAds";
             let detail = "result=false";
