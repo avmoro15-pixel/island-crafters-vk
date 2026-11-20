@@ -154,13 +154,14 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
     const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) <= 600;
     const portrait = matchMedia('(orientation: portrait)');
     let hiddenInVK = false;
-
-    // Enable automatic ad breaks only after confirming the format in the VK dashboard.
-    const interstitial = false;
-    const state = { available: inVK, interstitial, suspended: document.hidden || (phone && portrait.matches), lastAd: null };
+    let focused = document.hasFocus();
     let listener = null;
-    let pending = false;
-    let id = 0;
+    let requestId = 0;
+    let breakId = 0;
+    let availableUntil = 0;
+    let checking = false;
+    let waiting = false;
+    const state = { available: inVK, interstitial: inVK, suspended: false, lastAd: null, breakCheck: null };
 
     function emit() {
         if (listener) listener();
@@ -168,50 +169,72 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
 
     function updateVisibility() {
         const rotate = phone && portrait.matches;
-        state.suspended = document.hidden || hiddenInVK || rotate;
+        state.suspended = document.hidden || !focused || hiddenInVK || rotate;
         document.documentElement.classList.toggle('rotate-phone', rotate);
         emit();
     }
 
+    function withTimeout(promise, milliseconds) {
+        let timer;
+        return Promise.race([promise, new Promise(resolve => {
+            timer = setTimeout(() => resolve({ result: false }), milliseconds);
+        })]).finally(() => clearTimeout(timer));
+    }
+
     document.addEventListener('visibilitychange', updateVisibility);
+    window.addEventListener('blur', () => { focused = false; updateVisibility(); });
+    window.addEventListener('focus', () => { focused = true; updateVisibility(); });
     portrait.addEventListener('change', updateVisibility);
-    updateVisibility();
     bridge.subscribe(({ detail }) => {
         if (detail.type === 'VKWebAppViewHide' || detail.type === 'VKWebAppViewRestore') {
             hiddenInVK = detail.type === 'VKWebAppViewHide';
             updateVisibility();
         }
     });
+    updateVisibility();
 
-    window.IslandVKAds = {
+    window.IslandAds = {
         snapshotJson: () => JSON.stringify(state),
         setListener(callback) { listener = callback; },
+        checkInterstitial() {
+            if (!inVK || checking || waiting || state.suspended) return 0;
+            const id = ++breakId;
+            checking = true;
+            availableUntil = 0;
+            withTimeout(bridge.send('VKWebAppCheckNativeAds', { ad_format: 'interstitial' }), 2500)
+                .then(result => result.result === true, () => false)
+                .then(available => {
+                    checking = false;
+                    if (available) availableUntil = performance.now() + 8000;
+                    state.breakCheck = { id, available };
+                    emit();
+                });
+            return id;
+        },
         requestAd(kind) {
-            if (!inVK || pending || (kind !== 'rewarded' && !(interstitial && kind === 'interstitial'))) return 0;
-            pending = true;
-            const requestId = ++id;
-            const options = { ad_format: kind === "rewarded" ? "reward" : kind };
-            let watchdog;
+            if (!inVK || waiting || state.suspended || !['rewarded', 'interstitial'].includes(kind)) return 0;
+            if (kind === 'interstitial' && performance.now() >= availableUntil) return 0;
+            if (kind === 'interstitial') availableUntil = 0;
+            const id = ++requestId;
+            waiting = true;
+            const options = { ad_format: kind === 'rewarded' ? 'reward' : 'interstitial' };
             const show = async () => {
-                const available = await bridge.send('VKWebAppCheckNativeAds', options);
-                if (!pending || id !== requestId || available.result !== true) return false;
-                const response = await bridge.send('VKWebAppShowNativeAds', options);
-                return response.result === true;
+                if (kind === 'rewarded') {
+                    const available = await withTimeout(bridge.send('VKWebAppCheckNativeAds', options), 5000);
+                    if (available.result !== true || !waiting || id !== requestId || state.suspended) return false;
+                }
+                const result = await bridge.send('VKWebAppShowNativeAds', options);
+                return result.result === true;
             };
-            Promise.race([
-                show(),
-                new Promise(resolve => { watchdog = setTimeout(() => resolve(false), 90000); }),
-            ]).catch(() => false).then(shown => {
-                clearTimeout(watchdog);
-                pending = false;
-                state.lastAd = { id: requestId, kind, shown, rewarded: shown && kind === 'rewarded' };
+            withTimeout(show(), 120000).then(result => result === true, () => false).then(shown => {
+                waiting = false;
+                state.lastAd = { id, kind, shown, rewarded: shown && kind === 'rewarded' };
                 emit();
             });
-            return requestId;
+            return id;
         },
     };
 })();
-
 </script>
 <style>
 #phone-orientation { display: none; }
@@ -261,7 +284,7 @@ html[lang=en] #phone-orientation [lang=en] { display: inline; }
         </script>
         <script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":20135236,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":28019684,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
