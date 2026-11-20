@@ -218,15 +218,14 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
             const id = ++requestId;
             waiting = true;
             const options = { ad_format: kind === 'rewarded' ? 'reward' : 'interstitial' };
-            const show = async () => {
-                if (kind === 'rewarded') {
-                    const available = await withTimeout(bridge.send('VKWebAppCheckNativeAds', options), 5000);
-                    if (available.result !== true || !waiting || id !== requestId || state.suspended) return false;
+            const show = bridge.send('VKWebAppShowNativeAds', options);
+            withTimeout(show, 120000).then(
+                result => result.result === true,
+                error => {
+                    console.warn('VK ad request rejected', kind, error?.error_type, error?.error_data?.error_code);
+                    return false;
                 }
-                const result = await bridge.send('VKWebAppShowNativeAds', options);
-                return result.result === true;
-            };
-            withTimeout(show(), 120000).then(result => result === true, () => false).then(shown => {
+            ).then(shown => {
                 waiting = false;
                 state.lastAd = { id, kind, shown, rewarded: shown && kind === 'rewarded' };
                 emit();
@@ -284,7 +283,7 @@ html[lang=en] #phone-orientation [lang=en] { display: inline; }
         </script>
         <script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":28019684,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":28020308,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
