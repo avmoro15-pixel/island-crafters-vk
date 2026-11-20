@@ -222,7 +222,7 @@ if (window.vkBridge.isEmbedded() || new URLSearchParams(location.search).has('vk
             withTimeout(show, 120000).then(
                 result => result.result === true,
                 error => {
-                    console.warn('VK ad request rejected', kind, error?.error_type, error?.error_data?.error_code);
+                    console.warn('VK ad request rejected', kind, error?.error_type, error?.error_data?.error_code, error?.error_data?.error_reason);
                     return false;
                 }
             ).then(shown => {
